@@ -1,0 +1,15 @@
+;; shadow-cljs configuration
+{:source-paths
+ ["src/dev"
+  "src/main"
+  "src/test"]
+ 
+ :dev-http {8080 "resources/public"}
+
+ :dependencies
+ []
+
+ :builds
+ {:app {:target :browser
+        :output-dir "resources/public/js/app"
+        :modules {:main {:init-fn me.bartleby.space-invaders.core/init}}}}}
