@@ -12,4 +12,5 @@
  :builds
  {:app {:target :browser
         :output-dir "resources/public/js/app"
-        :modules {:main {:init-fn me.bartleby.space-invaders.core/init}}}}}
+        :modules {:main {:init-fn me.bartleby.space-invaders.core/main}}
+        :devtools {:after-load me.bartleby.space-invaders.core/init}}}}

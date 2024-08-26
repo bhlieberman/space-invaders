@@ -1,10 +1,8 @@
 (ns me.bartleby.space-invaders.core
   (:require
    [goog.async.nextTick]
-   [goog.dom :as gdom]
    [goog.dom.xml :as xml]
-   [goog.events :refer [listen]]
-   [goog.functions :refer [debounce]]))
+   [goog.events :refer [listen]]))
 
 ;; various game states
 ; 1. position of player
@@ -13,8 +11,8 @@
 
 ; 4. game started/stopped
 (defonce game-state (atom {:running? false
-                           :player {:position {:x 250 :y 350}}
-                           :enemies-tick {:dx 10 :dy 10}
+                           :player {:position {:x 550 :y 700}}
+                           :enemies-tick {:dx 2 :dy 10}
                            :enemies {:count 0
                                      :position {:top-left {:lx 20 :ly 5}
                                                 :bottom-right {:rx 300 :ry 100}}}}))
@@ -49,8 +47,6 @@
         sprite (.-player-sprite js/window)]
     (.drawImage ctx sprite player-x player-y)))
 
-(defn slow-log [o] (debounce #(js/console.log o) 5000))
-
 (defn draw-enemies [game-state ^js ctx]
   ;; 1. check game state -- if not started, there should be no sprites
   ;; 1a. if not running, set the enemy top-left and bottom-right maps
@@ -69,21 +65,13 @@
              {:keys [top-left bottom-right]} (get-enemy-pos game-state)
              {:keys [lx]} top-left
              {:keys [rx]} bottom-right]
-         ;; if lx + dx < 0, turn around!!!
-         ;; which means invert dx
-         ;; or if rx + dx > canvas width
-         ;; also turn around
-         ;; should they be checked together?
-         (.clearRect ctx 0 0 top-left bottom-right)
+         (when (or (<= (+ lx dx) 5) (<= (.-width canvas) (+ rx dx)))
+           (swap! game-state update-in [:enemies-tick :dx] * -1))
          (doto game-state
            (swap! update-in [:enemies :position :bottom-right]
-                  (fn [m] (if (< (+ rx dx) (.-width canvas))
-                            (update m :rx + dx)
-                            (update m :rx - dx))))
+                  (fn [m] (update m :rx + dx)))
            (swap! update-in [:enemies :position :top-left]
-                  (fn [m] (if (< 0 (+ lx dx))
-                            (update m :lx - dx)
-                            (update m :lx + dx))))))))))
+                  (fn [m] (update m :lx + dx)))))))))
 
 (comment @game-state)
 
