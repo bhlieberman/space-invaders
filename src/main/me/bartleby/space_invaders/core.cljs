@@ -21,13 +21,18 @@
 ;; 4. game started/stopped
 (defonce game-state (atom {:running? false
                            :lost-game false
-                           :bullets []
-                           :player {:position {:x 550 :y 700}}
+                           :bullets #{}
+                           :player {:position {:x 550 :y 700
+                                               :width player-width
+                                               :height player-height}}
                            :enemies-tick {:dx 1 :dy 10}
-                           :enemies (for [x (range 0 6)
-                                          y (range 0 2)]
-                                      {:x (* x enemy-width)
-                                       :y (* y enemy-height)})}))
+                           :enemies (set
+                                      (for [x (range 0 6)
+                                            y (range 0 2)]
+                                        {:x (* x enemy-width)
+                                         :y (* y enemy-height)
+                                         :width enemy-width
+                                         :height enemy-height}))}))
 
 ;; helper functions for accessing game state
 (defn get-player-x [st]
@@ -48,13 +53,17 @@
 
 ;; collision detection
 ;; when enemy y-boundary is equal to the top-y of the player
-(defn check-collision [st]
-  (let [x (get-player-x st)
-        y (get-player-y st)]
-    (some #(and (< (:x %) (+ x player-width))
-                (> (+ (:x %) enemy-width) x)
-                (< (:y %) (+ y player-height))
-                (> (+ (:y %) enemy-height) y)) (get-enemies st))))
+(defn check-groups
+  [group1 group2]
+  (first
+    (filter some?
+      (for [mem1 group1
+            mem2 group2]
+        (when (and (< (:x mem1) (+ (:x mem2) (:width mem2)))
+                (> (+ (:x mem1) (:width mem1)) (:x mem2))
+                (< (:y mem1) (+ (:y mem2) (:height mem2)))
+                (> (+ (:y mem1) (:height mem1)) (:y mem2)))
+          [mem1 mem2])))))
 
 ;; get canvas and context
 (defonce canvas (.getElementById js/document "game"))
@@ -74,29 +83,31 @@
   [st dx]
   (swap! st update :enemies
          (fn [enemies]
-           (for [{:keys [x y]} enemies]
-             {:x (+ x dx) :y y}))))
+           (set
+             (for [enemy enemies]
+               (update enemy :x + dx))))))
 
 (defn move-vertical
   [st dy]
   (swap! st update :enemies
          (fn [enemies]
-           (for [{:keys [x y]} enemies]
-             {:x x :y (+ y dy)}))))
+           (set
+             (for [enemy enemies]
+               (update enemy :y + dy))))))
 
 (def bullet-height 10)
 
 (def bullet-width 5)
 
 (defn shoot! [st x y]
-  (swap! st update :bullets conj {:x x :y y}))
+  (swap! st update :bullets conj {:x x :y y :width bullet-width :height bullet-height}))
 
 (defn draw-bullets [game-state ctx]
   (doseq [{:keys [x y]} (:bullets @game-state)]
     (set! (.-fillStyle ctx) "orange")
     (.fillRect ctx x (* 2 y) bullet-width bullet-height))
-  (swap! game-state update :bullets #(for [bullet %]
-                                       (update bullet :y - bullet-height))))
+  (swap! game-state update :bullets #(set (for [bullet %]
+                                            (update bullet :y - bullet-height)))))
 
 ;; position player at center and bottom
 (defn draw-player [game-state ^js ctx]
@@ -125,7 +136,13 @@
   (draw-player game-state ctx)
   (draw-enemies game-state ctx)
   (draw-bullets game-state ctx)
-  (if (check-collision game-state)
+  (when-let [[bullet enemy] (check-groups (:bullets @game-state) (:enemies @game-state))]
+    (swap! game-state
+      (fn [st]
+        (-> st
+          (update :enemies disj enemy)
+          (update :bullets disj bullet)))))
+  (if (check-groups (:enemies @game-state) [(get-in @game-state [:player :position])])
     (js/alert "You lost!")
     (js/requestAnimationFrame #(draw game-state ctx))))
 
