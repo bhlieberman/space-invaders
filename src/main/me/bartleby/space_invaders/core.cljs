@@ -5,18 +5,24 @@
    [goog.events :refer [listen]]))
 
 ;; various game states
-; 1. position of player
-; 2. position of enemy sprites
-; 3. count of enemy sprites
+;; 1. position of player
+;; 2. position of enemy sprites
+;; 3. count of enemy sprites
 
-; 4. game started/stopped
+(def enemy-width
+  56)
+
+(def enemy-height
+  43)
+
+;; 4. game started/stopped
 (defonce game-state (atom {:running? false
                            :player {:position {:x 550 :y 700}}
                            :enemies-tick {:dx 1 :dy 10}
-                           :enemies {:count 0
-                                     :initial []
-                                     :position {:top-left {:lx 3 :ly 5}
-                                                :bottom-right {:rx 336 :ry 100}}}}))
+                           :enemies (for [x (range 0 6)
+                                          y (range 0 2)]
+                                      {:x (* x enemy-width)
+                                       :y (* y enemy-height)})}))
 
 ;; helper functions for accessing game state
 (defn get-player-x [st]
@@ -31,16 +37,38 @@
 (defn get-enemy-tick [st]
   (:enemies-tick @st))
 
-(defn get-enemy-pos
-  "Enemy sprites will appear in groups (rows) so their \"position\" is represented
-   as that of the top left sprite and bottom right sprite."
+(defn get-enemies
   [st]
-  (get-in @st [:enemies :position]))
+  (:enemies @st))
 
 
 ;; get canvas and context
 (defonce canvas (.getElementById js/document "game"))
 (defonce ctx (.getContext canvas "2d"))
+
+(defn any-right?
+  [st dx]
+  (some #(<= (.-width canvas) (+ (:x %) dx enemy-width))
+    (get-enemies st)))
+
+(defn any-left?
+  [st dx]
+  (some #(<= (+ (:x %) dx) 0)
+    (get-enemies st)))
+
+(defn move-horizontal
+  [st dx]
+  (swap! st update :enemies
+    (fn [enemies]
+      (for [{:keys [x y]} enemies]
+        {:x (+ x dx) :y y}))))
+
+(defn move-vertical
+  [st dy]
+  (swap! st update :enemies
+    (fn [enemies]
+      (for [{:keys [x y]} enemies]
+        {:x x :y (+ y dy)}))))
 
 ;; position player at center and bottom
 (defn draw-player [game-state ^js ctx]
@@ -51,28 +79,19 @@
 (defn draw-enemies [game-state ^js ctx]
   ;; 1. check game state -- if not started, there should be no sprites
   ;; 1a. if not running, set the enemy top-left and bottom-right maps
-  (let [{:keys [top-left bottom-right]} (get-enemy-pos game-state)
-        [left right] [(:lx top-left) (:rx bottom-right)]
-        [up down] [(:ly top-left) (:ry bottom-right)]
-        sprite (.-enemy-sprite js/window)]
-    (doseq [x (range left right 56)
-            y (range up down 50)]
+  (let [sprite (.-enemy-sprite js/window)]
+    (doseq [{:keys [x y]} (get-enemies game-state)]
       (.drawImage ctx sprite x y))
     #_{:clj-kondo/ignore [:unresolved-symbol]}
     (goog.async.nextTick
      (fn []
-       ;; check position of top-left and bottom-right corners
-       (let [{:keys [dx dy]} (get-enemy-tick game-state)
-             {:keys [top-left bottom-right]} (get-enemy-pos game-state)
-             {:keys [lx]} top-left
-             {:keys [rx]} bottom-right]
-         (when (or (<= (+ lx dx) 0) (<= (.-width canvas) (+ rx dx)))
-           (swap! game-state update-in [:enemies-tick :dx] * -1))
-         (doto game-state
-           (swap! update-in [:enemies :position :bottom-right]
-                  (fn [m] (update m :rx + dx)))
-           (swap! update-in [:enemies :position :top-left]
-                  (fn [m] (update m :lx + dx)))))))))
+       (let [{:keys [dx dy]} (:enemies-tick @game-state)]
+        ;; check position of top-left and bottom-right corners
+        (when (or (any-left? game-state dx) (any-right? game-state dx))
+          (doto game-state
+            (swap! update-in [:enemies-tick :dx] * -1)
+            (move-vertical dy)))
+        (move-horizontal game-state dx))))))
 
 (comment @game-state)
 
@@ -136,7 +155,7 @@
 
 (comment
   (init)
-  
+
 
   (main)
   )
