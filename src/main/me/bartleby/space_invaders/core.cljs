@@ -12,10 +12,11 @@
 ; 4. game started/stopped
 (defonce game-state (atom {:running? false
                            :player {:position {:x 550 :y 700}}
-                           :enemies-tick {:dx 2 :dy 10}
+                           :enemies-tick {:dx 1 :dy 10}
                            :enemies {:count 0
-                                     :position {:top-left {:lx 20 :ly 5}
-                                                :bottom-right {:rx 300 :ry 100}}}}))
+                                     :initial []
+                                     :position {:top-left {:lx 3 :ly 5}
+                                                :bottom-right {:rx 336 :ry 100}}}}))
 
 ;; helper functions for accessing game state
 (defn get-player-x [st]
@@ -54,7 +55,7 @@
         [left right] [(:lx top-left) (:rx bottom-right)]
         [up down] [(:ly top-left) (:ry bottom-right)]
         sprite (.-enemy-sprite js/window)]
-    (doseq [x (range left right 50)
+    (doseq [x (range left right 56)
             y (range up down 50)]
       (.drawImage ctx sprite x y))
     #_{:clj-kondo/ignore [:unresolved-symbol]}
@@ -65,7 +66,7 @@
              {:keys [top-left bottom-right]} (get-enemy-pos game-state)
              {:keys [lx]} top-left
              {:keys [rx]} bottom-right]
-         (when (or (<= (+ lx dx) 5) (<= (.-width canvas) (+ rx dx)))
+         (when (or (<= (+ lx dx) 0) (<= (.-width canvas) (+ rx dx)))
            (swap! game-state update-in [:enemies-tick :dx] * -1))
          (doto game-state
            (swap! update-in [:enemies :position :bottom-right]
@@ -93,15 +94,10 @@
 
 (defn add-key-listeners []
   ;; add event listeners for moving player
-  (let [key-up-handler (fn [e]
-                         (let [new-x (check-key e)]
-                           (set-player-pos game-state new-x)))
-        key-down-handler (fn [e]
+  (let [key-down-handler (fn [e]
                            (let [new-x (check-key e)]
-                             new-x))]
-    (doto js/document
-      (listen "keyup" key-up-handler)
-      (listen "keydown" key-down-handler))))
+                             (set-player-pos game-state new-x)))]
+    (listen js/document "keydown" key-down-handler)))
 
 (defn load-game-images
   "Loads the sprites for display when the game starts."
@@ -116,8 +112,7 @@
     (set! (.-enemy-sprite js/window) enemy-img)))
 
 (defn ^:dev/after-load init []
-  (js/console.log "loaded")
-  (add-key-listeners))
+  (js/console.log "loaded"))
 
 (defn show-modal []
   (let [Modal (.. js/window -bootstrap -Modal)
@@ -135,7 +130,13 @@
     (.show modal)))
 
 (defn ^:export main []
+  (add-key-listeners)
   (show-modal)
   (load-game-images))
 
-(comment (main))
+(comment
+  (init)
+  
+
+  (main)
+  )
