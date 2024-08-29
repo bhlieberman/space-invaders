@@ -1,6 +1,5 @@
 (ns me.bartleby.space-invaders.core
   (:require
-   [goog.async.nextTick]
    [goog.dom.xml :as xml]
    [goog.events :refer [listen]]))
 
@@ -15,8 +14,14 @@
 (def enemy-height
   43)
 
+(def player-width 60)
+
+(def player-height 30)
+
 ;; 4. game started/stopped
 (defonce game-state (atom {:running? false
+                           :lost-game false
+                           :bullets []
                            :player {:position {:x 550 :y 700}}
                            :enemies-tick {:dx 1 :dy 10}
                            :enemies (for [x (range 0 6)
@@ -41,6 +46,15 @@
   [st]
   (:enemies @st))
 
+;; collision detection
+;; when enemy y-boundary is equal to the top-y of the player
+(defn check-collision [st]
+  (let [x (get-player-x st)
+        y (get-player-y st)]
+    (some #(and (< (:x %) (+ x player-width))
+                (> (+ (:x %) enemy-width) x)
+                (< (:y %) (+ y player-height))
+                (> (+ (:y %) enemy-height) y)) (get-enemies st))))
 
 ;; get canvas and context
 (defonce canvas (.getElementById js/document "game"))
@@ -49,26 +63,40 @@
 (defn any-right?
   [st dx]
   (some #(<= (.-width canvas) (+ (:x %) dx enemy-width))
-    (get-enemies st)))
+        (get-enemies st)))
 
 (defn any-left?
   [st dx]
   (some #(<= (+ (:x %) dx) 0)
-    (get-enemies st)))
+        (get-enemies st)))
 
 (defn move-horizontal
   [st dx]
   (swap! st update :enemies
-    (fn [enemies]
-      (for [{:keys [x y]} enemies]
-        {:x (+ x dx) :y y}))))
+         (fn [enemies]
+           (for [{:keys [x y]} enemies]
+             {:x (+ x dx) :y y}))))
 
 (defn move-vertical
   [st dy]
   (swap! st update :enemies
-    (fn [enemies]
-      (for [{:keys [x y]} enemies]
-        {:x x :y (+ y dy)}))))
+         (fn [enemies]
+           (for [{:keys [x y]} enemies]
+             {:x x :y (+ y dy)}))))
+
+(def bullet-height 10)
+
+(def bullet-width 5)
+
+(defn shoot! [st x y]
+  (swap! st update :bullets conj {:x x :y y}))
+
+(defn draw-bullets [game-state ctx]
+  (doseq [{:keys [x y]} (:bullets @game-state)]
+    (set! (.-fillStyle ctx) "orange")
+    (.fillRect ctx x (* 2 y) bullet-width bullet-height))
+  (swap! game-state update :bullets #(for [bullet %]
+                                       (update bullet :y - bullet-height))))
 
 ;; position player at center and bottom
 (defn draw-player [game-state ^js ctx]
@@ -82,16 +110,13 @@
   (let [sprite (.-enemy-sprite js/window)]
     (doseq [{:keys [x y]} (get-enemies game-state)]
       (.drawImage ctx sprite x y))
-    #_{:clj-kondo/ignore [:unresolved-symbol]}
-    (goog.async.nextTick
-     (fn []
-       (let [{:keys [dx dy]} (:enemies-tick @game-state)]
+    (let [{:keys [dx dy]} (:enemies-tick @game-state)]
         ;; check position of top-left and bottom-right corners
-        (when (or (any-left? game-state dx) (any-right? game-state dx))
-          (doto game-state
-            (swap! update-in [:enemies-tick :dx] * -1)
-            (move-vertical dy)))
-        (move-horizontal game-state dx))))))
+      (when (or (any-left? game-state dx) (any-right? game-state dx))
+        (doto game-state
+          (swap! update-in [:enemies-tick :dx] * -1)
+          (move-vertical dy)))
+      (move-horizontal game-state dx))))
 
 (comment @game-state)
 
@@ -99,7 +124,10 @@
   (.clearRect ctx 0 0 (.-width canvas) (.-height canvas))
   (draw-player game-state ctx)
   (draw-enemies game-state ctx)
-  (js/requestAnimationFrame #(draw game-state ctx)))
+  (draw-bullets game-state ctx)
+  (if (check-collision game-state)
+    (js/alert "You lost!")
+    (js/requestAnimationFrame #(draw game-state ctx))))
 
 ;; functions to update player-position on keydown and keyup
 (defn check-key
@@ -109,6 +137,9 @@
   (case (.-key e)
     "ArrowLeft" 10
     "ArrowRight" -10
+    " " (let [[x y] ((juxt get-player-x get-player-y) game-state)]
+              (shoot! game-state x y)
+              0)
     0))
 
 (defn add-key-listeners []
@@ -157,5 +188,4 @@
   (init)
 
 
-  (main)
-  )
+  (main))
